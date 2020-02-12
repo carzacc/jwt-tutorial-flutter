@@ -34,7 +34,6 @@ class MyApp extends StatelessWidget {
                 if(DateTime.fromMillisecondsSinceEpoch(payload["exp"]*1000).isAfter(DateTime.now())) {
                   return HomePage(str, payload);
                 } else {
-                  print("old token" + DateTime.fromMillisecondsSinceEpoch(payload["exp"]*1000).toIso8601String());
                   return LoginPage(Future.value(file));
                 }
               }
@@ -62,7 +61,6 @@ class LoginPage extends StatelessWidget {
         "password": password
       }
     );
-    print(res.body);
     if(res.statusCode == 200) return res.body;
     return null;
   }
@@ -178,7 +176,6 @@ class HomePage extends StatelessWidget {
   
   HomePage.fromBase64(String jwt) {
     this.jwt = jwt;
-    print('<${jwt.split(".")[1]}>');
     this.payload = json.decode(ascii.decode(base64.decode(base64.normalize(jwt.split(".")[1]))));
   }
   String jwt;

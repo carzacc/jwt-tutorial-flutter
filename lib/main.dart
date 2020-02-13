@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart' show getApplicationDocumentsDirectory;
-import 'dart:io' show File;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert' show json, base64, ascii;
 
 const SERVER_IP = 'http://192.168.1.167:5000';
+final storage = FlutterSecureStorage();
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  Future<String> get jwtOrEmpty async {
+    var jwt = await storage.read(key: "jwt");
+    if(jwt == null) return "";
+    return jwt;
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -19,39 +25,35 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       home: FutureBuilder(
-        future: getApplicationDocumentsDirectory(),            
-          builder: (context, snapshot) {
-            if(!snapshot.hasData) return CircularProgressIndicator();
-            var file = File("${snapshot.data.path}/jwt.txt");
-            if(file.existsSync()) {
-              var str = file.readAsStringSync();
-              var jwt = str.split(".");
+        future: jwtOrEmpty,            
+        builder: (context, snapshot) {
+          if(!snapshot.hasData) return CircularProgressIndicator();
+          if(snapshot.data != "") {
+            var str = snapshot.data;
+            var jwt = str.split(".");
 
-              if(jwt.length !=3) {
-                return LoginPage(Future.value(file));
-              } else {
-                var payload = json.decode(ascii.decode(base64.decode(base64.normalize(jwt[1]))));
-                if(DateTime.fromMillisecondsSinceEpoch(payload["exp"]*1000).isAfter(DateTime.now())) {
-                  return HomePage(str, payload);
-                } else {
-                  return LoginPage(Future.value(file));
-                }
-              }
+            if(jwt.length !=3) {
+              return LoginPage();
             } else {
-              return LoginPage(file.create());
+              var payload = json.decode(ascii.decode(base64.decode(base64.normalize(jwt[1]))));
+              if(DateTime.fromMillisecondsSinceEpoch(payload["exp"]*1000).isAfter(DateTime.now())) {
+                return HomePage(str, payload);
+              } else {
+                return LoginPage();
+              }
             }
+          } else {
+            return LoginPage();
           }
+        }
       ),
     );
   }
 }
 
 class LoginPage extends StatelessWidget {
-  LoginPage(this.jwtFile);
-  TextEditingController _usernameController = TextEditingController();
-  TextEditingController _passwordController = TextEditingController();
-
-  Future<File> jwtFile;
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   void displayDialog(context, title, text) => showDialog(
       context: context,
@@ -113,7 +115,7 @@ class LoginPage extends StatelessWidget {
                 var password = _passwordController.text;
                 var jwt = await attemptLogIn(username, password);
                 if(jwt != null) {
-                  (await jwtFile).writeAsStringSync(jwt);
+                  storage.write(key: "jwt", value: jwt);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -158,12 +160,18 @@ class LoginPage extends StatelessWidget {
 class HomePage extends StatelessWidget {
   HomePage(this.jwt, this.payload);
   
-  HomePage.fromBase64(String jwt) {
-    this.jwt = jwt;
-    this.payload = json.decode(ascii.decode(base64.decode(base64.normalize(jwt.split(".")[1]))));
-  }
-  String jwt;
-  Map<String, dynamic> payload;
+  factory HomePage.fromBase64(String jwt) =>
+    HomePage(
+      jwt,
+      json.decode(
+        ascii.decode(
+          base64.decode(base64.normalize(jwt.split(".")[1]))
+        )
+      )
+    );
+
+  final String jwt;
+  final Map<String, dynamic> payload;
 
   @override
   Widget build(BuildContext context) =>
@@ -176,7 +184,7 @@ class HomePage extends StatelessWidget {
             snapshot.hasData ?
             Column(children: <Widget>[
               Text("${payload['username']}, here's the data:"),
-              Text(snapshot.data, style: Theme.of(context).textTheme.display1,)
+              Text(snapshot.data, style: Theme.of(context).textTheme.display1)
             ],)
             :
             snapshot.hasError ? Text("An error occurred") : CircularProgressIndicator()
